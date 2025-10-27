@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page - Multiple VTT Files</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        track {
+            display: block;
+            margin: 10px 0;
+        }
+        a {
+            display: block;
+            margin: 10px 0;
+            color: #0066cc;
+        }
+        video {
+            width: 100%;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Page with Multiple VTT Files</h1>
+
+    <div class="section">
+        <h2>Video with Multiple Track Elements</h2>
+        <video controls>
+            <source src="video.mp4" type="video/mp4">
+            <track src="https://example.com/subtitles-en.vtt" kind="subtitles" srclang="en" label="English">
+            <track src="https://example.com/subtitles-it.vtt" kind="subtitles" srclang="it" label="Italian">
+            <track src="https://example.com/captions.vtt" kind="captions" srclang="en" label="English Captions">
+        </video>
+    </div>
+
+    <div class="section">
+        <h2>Direct Links to VTT Files</h2>
+        <a href="https://example.com/subtitle1.vtt">Download Subtitle 1</a>
+        <a href="https://example.com/subtitle2.vtt">Download Subtitle 2</a>
+        <a href="https://example.com/subtitle3.vtt">Download Subtitle 3</a>
+    </div>
+
+    <div class="section">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Load this extension in Chrome (chrome://extensions)</li>
+            <li>Open this test page</li>
+            <li>Click the extension icon</li>
+            <li>Click "Scarica VTT"</li>
+            <li>Expected result: Should find 6 VTT files and download them as:
+                <ul>
+                    <li>Test_Page_-_Multiple_VTT_Files_1.txt</li>
+                    <li>Test_Page_-_Multiple_VTT_Files_2.txt</li>
+                    <li>Test_Page_-_Multiple_VTT_Files_3.txt</li>
+                    <li>Test_Page_-_Multiple_VTT_Files_4.txt</li>
+                    <li>Test_Page_-_Multiple_VTT_Files_5.txt</li>
+                    <li>Test_Page_-_Multiple_VTT_Files_6.txt</li>
+                </ul>
+            </li>
+        </ol>
+        <p><strong>Note:</strong> The actual downloads will fail because these are example URLs, but the extension should correctly detect all 6 VTT references and show the appropriate status message.</p>
+    </div>
+
+    <div class="section">
+        <h2>Hidden VTT URLs in HTML</h2>
+        <div style="display:none;">
+            https://example.com/hidden-subtitle.vtt
+        </div>
+    </div>
+
+</body>
+</html>

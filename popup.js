@@ -9,48 +9,66 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+    // Collect all VTT URLs from different sources
+    const allVttUrls = [];
+
     // First try to get VTT files from background script (intercepted network requests)
     const bgResponse = await chrome.runtime.sendMessage({
       action: 'getVttFiles',
       tabId: tab.id
     });
 
-    let vttUrl = null;
-
-    // If background script found VTT files, use the first one
+    // If background script found VTT files, add them all
     if (bgResponse && bgResponse.vttFiles && bgResponse.vttFiles.length > 0) {
-      vttUrl = bgResponse.vttFiles[0];
-      console.log('VTT found from background script:', vttUrl);
+      allVttUrls.push(...bgResponse.vttFiles);
+      console.log('VTT files found from background script:', bgResponse.vttFiles);
     }
 
-    // If not found in background, try to find it in the page
-    if (!vttUrl) {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: findVTTInPage
-      });
+    // Also try to find VTT files in the page
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: findVTTInPage
+    });
 
-      if (results && results[0] && results[0].result) {
-        vttUrl = results[0].result;
-        console.log('VTT found in page:', vttUrl);
-      }
+    if (results && results[0] && results[0].result && results[0].result.length > 0) {
+      allVttUrls.push(...results[0].result);
+      console.log('VTT files found in page:', results[0].result);
     }
 
-    if (!vttUrl) {
+    // Remove duplicates by converting to Set and back to Array
+    const uniqueVttUrls = [...new Set(allVttUrls)];
+
+    if (uniqueVttUrls.length === 0) {
       status.className = 'error';
       status.textContent = 'No VTT file found on the page';
       return;
     }
 
-    // Download the VTT file
-    const result = await downloadVTT(vttUrl, tab.title);
+    // Update status to show progress
+    status.className = 'info';
+    status.textContent = `Downloading ${uniqueVttUrls.length} VTT file${uniqueVttUrls.length > 1 ? 's' : ''}...`;
 
-    if (result.success) {
+    // Download all VTT files
+    const downloadResults = [];
+    for (let i = 0; i < uniqueVttUrls.length; i++) {
+      const result = await downloadVTT(uniqueVttUrls[i], tab.title, i + 1, uniqueVttUrls.length);
+      downloadResults.push(result);
+    }
+
+    // Show final status
+    const successCount = downloadResults.filter(r => r.success).length;
+    const failCount = downloadResults.length - successCount;
+
+    if (successCount === downloadResults.length) {
       status.className = 'success';
-      status.textContent = `File downloaded: ${result.filename}`;
+      const filenames = downloadResults.map(r => r.filename).join(', ');
+      status.textContent = `Successfully downloaded ${successCount} file${successCount > 1 ? 's' : ''}: ${filenames}`;
+    } else if (successCount > 0) {
+      status.className = 'success';
+      status.textContent = `Downloaded ${successCount}/${downloadResults.length} files (${failCount} failed)`;
     } else {
       status.className = 'error';
-      status.textContent = result.error || 'Error during download';
+      status.textContent = 'All downloads failed';
     }
   } catch (error) {
     status.className = 'error';
@@ -62,53 +80,54 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
 
 // Function executed in page to search for VTT in DOM and Performance API
 function findVTTInPage() {
-  let vttUrl = null;
+  const vttUrls = [];
 
   // 1. Search for <track> tags with VTT files
   const tracks = document.querySelectorAll('track[src*=".vtt"], track[kind="subtitles"], track[kind="captions"]');
-  if (tracks.length > 0) {
-    vttUrl = tracks[0].src;
-  }
+  tracks.forEach(track => {
+    if (track.src) {
+      vttUrls.push(track.src);
+    }
+  });
 
   // 2. Search for links with .vtt extension
-  if (!vttUrl) {
-    const links = document.querySelectorAll('a[href*=".vtt"]');
-    if (links.length > 0) {
-      vttUrl = links[0].href;
+  const links = document.querySelectorAll('a[href*=".vtt"]');
+  links.forEach(link => {
+    if (link.href) {
+      vttUrls.push(link.href);
     }
-  }
+  });
 
   // 3. Search in HTML for VTT file URLs
-  if (!vttUrl) {
-    const bodyText = document.body.innerHTML;
-    const vttMatch = bodyText.match(/(https?:\/\/[^\s<>"]+\.vtt[^\s<>"]*)/i);
-    if (vttMatch) {
-      vttUrl = vttMatch[1];
-    }
+  const bodyText = document.body.innerHTML;
+  const vttMatches = bodyText.matchAll(/(https?:\/\/[^\s<>"]+\.vtt[^\s<>"]*)/gi);
+  for (const match of vttMatches) {
+    vttUrls.push(match[1]);
   }
 
   // 4. Search for blob URLs or data URLs
-  if (!vttUrl) {
-    const allLinks = document.querySelectorAll('a[href^="blob:"], a[href^="data:text/vtt"]');
-    if (allLinks.length > 0) {
-      vttUrl = allLinks[0].href;
+  const allLinks = document.querySelectorAll('a[href^="blob:"], a[href^="data:text/vtt"]');
+  allLinks.forEach(link => {
+    if (link.href) {
+      vttUrls.push(link.href);
     }
-  }
+  });
 
   // 5. Search in Performance API (resources loaded via XHR/Fetch)
-  if (!vttUrl && window.performance) {
+  if (window.performance) {
     const resources = performance.getEntriesByType('resource');
-    const vttResource = resources.find(r => r.name.includes('.vtt'));
-    if (vttResource) {
-      vttUrl = vttResource.name;
-    }
+    resources.forEach(r => {
+      if (r.name.includes('.vtt')) {
+        vttUrls.push(r.name);
+      }
+    });
   }
 
-  return vttUrl;
+  return vttUrls;
 }
 
 // Function to download the VTT (executed in popup context)
-async function downloadVTT(vttUrl, pageTitle) {
+async function downloadVTT(vttUrl, pageTitle, index, totalFiles) {
   try {
     // Download the VTT file content
     const response = await fetch(vttUrl);
@@ -125,7 +144,10 @@ async function downloadVTT(vttUrl, pageTitle) {
       .replace(/\s+/g, '_')            // Replace spaces with underscores
       .substring(0, 100);              // Limit length
 
-    const filename = `${cleanTitle}.txt`;
+    // Add index suffix only if there are multiple files
+    const filename = totalFiles > 1
+      ? `${cleanTitle}_${index}.txt`
+      : `${cleanTitle}.txt`;
 
     // Create a blob and download the file
     const blob = new Blob([vttContent], { type: 'text/plain' });
